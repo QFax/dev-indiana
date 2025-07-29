@@ -51,7 +51,7 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		req.Host = target.Host
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
-		req.URL.Path = c.Param("path")
+		req.URL.Path = c.Request.URL.Path
 		req.Header.Set("x-goog-api-key", geminiAPIKey.(string))
 	}
 

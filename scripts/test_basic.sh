@@ -58,7 +58,7 @@ echo "Sending POST request to $API_ENDPOINT"
 RESPONSE_CODE=$(curl -s -o "$RESPONSE_FILE" -w "%{http_code}" \
   -X POST \
   -H "Content-Type: application/json" \
-  -H "X-Proxy-API-Key: $PROXY_API_KEY" \
+  -H "x-goog-api-key: $PROXY_API_KEY" \
   -d "$JSON_PAYLOAD" \
   "$API_ENDPOINT")
 
