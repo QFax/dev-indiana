@@ -80,13 +80,16 @@ func (s *ValkeyService) UpdateStats(ctx context.Context, apiKey string, promptTo
 	dailyKey := fmt.Sprintf("proxy:%s:stats:daily:%s", apiKey, now.Format("2006-01-02"))
 
 	// Update minute stats
-	pipe := s.Client.B().Hincrby().Key(minuteKey).Field("prompt_tokens").Increment(int64(promptTokens)).Hincrby().Key(minuteKey).Field("completion_tokens").Increment(int64(completionTokens)).Build()
-	s.Client.Do(ctx, pipe)
+	// Update minute stats
+	s.Client.Do(ctx, s.Client.B().Hincrby().Key(minuteKey).Field("prompt_tokens").Increment(int64(promptTokens)).Build())
+	s.Client.Do(ctx, s.Client.B().Hincrby().Key(minuteKey).Field("completion_tokens").Increment(int64(completionTokens)).Build())
 	s.Client.Do(ctx, s.Client.B().Expire().Key(minuteKey).Seconds(86400).Build()) // 24 hours
 
 	// Update daily stats
-	pipe = s.Client.B().Hincrby().Key(dailyKey).Field("total_requests").Increment(1).Hincrby().Key(dailyKey).Field("total_prompt_tokens").Increment(int64(promptTokens)).Hincrby().Key(dailyKey).Field("total_completion_tokens").Increment(int64(completionTokens)).Hincrby().Key(dailyKey).Field("total_tokens").Increment(int64(promptTokens + completionTokens)).Build()
-	s.Client.Do(ctx, pipe)
+	s.Client.Do(ctx, s.Client.B().Hincrby().Key(dailyKey).Field("total_requests").Increment(1).Build())
+	s.Client.Do(ctx, s.Client.B().Hincrby().Key(dailyKey).Field("total_prompt_tokens").Increment(int64(promptTokens)).Build())
+	s.Client.Do(ctx, s.Client.B().Hincrby().Key(dailyKey).Field("total_completion_tokens").Increment(int64(completionTokens)).Build())
+	s.Client.Do(ctx, s.Client.B().Hincrby().Key(dailyKey).Field("total_tokens").Increment(int64(promptTokens+completionTokens)).Build())
 	s.Client.Do(ctx, s.Client.B().Expire().Key(dailyKey).Seconds(604800).Build()) // 7 days
 
 	return nil
