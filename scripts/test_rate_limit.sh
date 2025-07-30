@@ -55,14 +55,14 @@ send_burst() {
 
   echo "--- Sending Burst '$burst_name' at $(get_current_time_str) ---"
   
-  JSON_PAYLOAD='{"contents": [{"parts": [{"text": "Explain quantum computing simply."}]}]}'
+  JSON_PAYLOAD='{"contents": [{"parts": [{"text": "Hi!"}]}]}'
   API_ENDPOINT="$PROXY_URL/v1beta/models/gemini-2.5-pro:generateContent"
   
   for i in $(seq 1 $REQUESTS_PER_BURST); do
     RESPONSE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
       -X POST \
       -H "Content-Type: application/json" \
-      -H "X-Proxy-API-Key: $PROXY_API_KEY" \
+      -H "x-goog-api-Key: $PROXY_API_KEY" \
       -d "$JSON_PAYLOAD" \
       "$API_ENDPOINT")
     echo "Request #$i: Status $RESPONSE_CODE"

@@ -30,7 +30,7 @@ func main() {
 	// All other routes are handled by the proxy
 	r.NoRoute(
 		middleware.AuthMiddleware(cfg),
-		middleware.RateLimitMiddleware(valkeyService, cfg),
+		middleware.RateLimitMiddleware(valkeyService, cfg, services.NewRequestQueue()),
 		proxyHandler.HandleProxy,
 	)
 

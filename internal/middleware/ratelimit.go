@@ -9,34 +9,43 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RateLimitMiddleware(valkeyService *services.ValkeyService, cfg *config.Config) gin.HandlerFunc {
+func RateLimitMiddleware(valkeyService *services.ValkeyService, cfg *config.Config, queue *services.RequestQueue) gin.HandlerFunc {
+	go processQueue(valkeyService, cfg, queue)
+
 	return func(c *gin.Context) {
-		geminiAPIKey, err := valkeyService.GetNextAPIKey(c.Request.Context(), cfg.GeminiAPIKeys)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get API key"})
-			c.Abort()
-			return
+		req := &services.Request{
+			C:    c,
+			Done: make(chan struct{}),
 		}
+		queue.Add(req)
+		<-req.Done
+	}
+}
 
-		c.Set("geminiAPIKey", geminiAPIKey)
-
-		for {
-			allowed, err := valkeyService.CheckRateLimit(c.Request.Context(), geminiAPIKey, cfg.RateLimitPerMinute, cfg.RateLimitWindow)
+func processQueue(valkeyService *services.ValkeyService, cfg *config.Config, queue *services.RequestQueue) {
+	for {
+		req := queue.Get()
+		var earliestReset time.Time
+		for _, apiKey := range cfg.GeminiAPIKeys {
+			allowed, resetTime, err := valkeyService.CheckRateLimit(req.C.Request.Context(), apiKey, cfg.RateLimitPerMinute, 100, 250000, cfg.RateLimitWindow)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check rate limit"})
-				c.Abort()
-				return
+				req.C.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check rate limit"})
+				close(req.Done)
+				continue
 			}
 
 			if allowed {
-				break
+				req.C.Set("geminiAPIKey", apiKey)
+				req.C.Next()
+				close(req.Done)
+				goto nextRequest
 			}
-
-			// If rate limited, wait and retry. A more sophisticated implementation
-			// might have a timeout or a more complex backoff strategy.
-			time.Sleep(1 * time.Second)
+			if earliestReset.IsZero() || resetTime.Before(earliestReset) {
+				earliestReset = resetTime
+			}
 		}
-
-		c.Next()
+		time.Sleep(time.Until(earliestReset))
+		queue.Add(req)
+	nextRequest:
 	}
 }

@@ -36,42 +36,48 @@ func (s *ValkeyService) GetNextAPIKey(ctx context.Context, keys []string) (strin
 	return keys[index%int64(len(keys))], nil
 }
 
-func (s *ValkeyService) CheckRateLimit(ctx context.Context, apiKey string, limit int, window string) (bool, error) {
-	now := time.Now().Unix()
-	key := fmt.Sprintf("proxy:%s:requests:minute", apiKey)
+func (s *ValkeyService) CheckRateLimit(ctx context.Context, apiKey string, limitPerMinute, limitPerDay, tokensPerMinute int, window string) (bool, time.Time, error) {
+	now := time.Now()
+	nowUnix := now.Unix()
 
-	var err error
-	if window == "fixed" {
-		// For fixed window, we just need to check the count in the current minute.
-		// A real implementation would need a more robust way to define the start of the minute.
-		// This is simplified for the example.
-		_, err = s.Client.Do(ctx, s.Client.B().Zremrangebyscore().Key(key).Min(fmt.Sprintf("%d", 0)).Max(fmt.Sprintf("%d", now-60)).Build()).AsInt64()
-	} else { // sliding window
-		_, err = s.Client.Do(ctx, s.Client.B().Zremrangebyscore().Key(key).Min(fmt.Sprintf("%d", 0)).Max(fmt.Sprintf("%d", now-60)).Build()).AsInt64()
-	}
-
+	// Per-minute request limit
+	minuteKey := fmt.Sprintf("proxy:%s:requests:minute", apiKey)
+	s.Client.Do(ctx, s.Client.B().Zremrangebyscore().Key(minuteKey).Min(fmt.Sprintf("%d", 0)).Max(fmt.Sprintf("%d", nowUnix-60)).Build())
+	count, err := s.Client.Do(ctx, s.Client.B().Zcard().Key(minuteKey).Build()).AsInt64()
 	if err != nil {
-		return false, err
+		return false, time.Time{}, err
+	}
+	if count >= int64(limitPerMinute) {
+		oldest, err := s.Client.Do(ctx, s.Client.B().Zrange().Key(minuteKey).Min(0).Max(0).Build()).AsStrSlice()
+		if err != nil || len(oldest) == 0 {
+			return false, time.Time{}, err
+		}
+		oldestTimestamp, _ := time.Parse(time.RFC3339, oldest)
+		return false, oldestTimestamp.Add(60 * time.Second), nil
 	}
 
-	count, err := s.Client.Do(ctx, s.Client.B().Zcard().Key(key).Build()).AsInt64()
+	// Per-day request limit
+	dailyKey := fmt.Sprintf("proxy:%s:requests:day", apiKey)
+	s.Client.Do(ctx, s.Client.B().Zremrangebyscore().Key(dailyKey).Min(fmt.Sprintf("%d", 0)).Max(fmt.Sprintf("%d", nowUnix-86400)).Build())
+	count, err = s.Client.Do(ctx, s.Client.B().Zcard().Key(dailyKey).Build()).AsInt64()
 	if err != nil {
-		return false, err
+		return false, time.Time{}, err
+	}
+	if count >= int64(limitPerDay) {
+		oldest, err := s.Client.Do(ctx, s.Client.B().Zrange().Key(dailyKey).Min(0).Max(0).Build()).AsStrSlice()
+		if err != nil || len(oldest) == 0 {
+			return false, time.Time{}, err
+		}
+		oldestTimestamp, _ := time.Parse(time.RFC3339, oldest)
+		return false, oldestTimestamp.Add(86400 * time.Second), nil
 	}
 
-	if count >= int64(limit) {
-		return false, nil // Rate limit exceeded
-	}
 
-	_, err = s.Client.Do(ctx, s.Client.B().Zadd().Key(key).ScoreMember().ScoreMember(float64(now), fmt.Sprintf("%d", now)).Build()).AsInt64()
-	if err != nil {
-		return false, err
-	}
+	// Add current request to sets
+	s.Client.Do(ctx, s.Client.B().Zadd().Key(minuteKey).ScoreMember().ScoreMember(float64(nowUnix), now.Format(time.RFC3339)).Build())
+	s.Client.Do(ctx, s.Client.B().Zadd().Key(dailyKey).ScoreMember().ScoreMember(float64(nowUnix), now.Format(time.RFC3339)).Build())
 
-	// Set expiration for the key to clean up old data
-	s.Client.Do(ctx, s.Client.B().Expire().Key(key).Seconds(86400).Build()) // 24 hours
-
-	return true, nil
+	return true, time.Time{}, nil
 }
 
 func (s *ValkeyService) UpdateStats(ctx context.Context, apiKey string, promptTokens, completionTokens int) error {
