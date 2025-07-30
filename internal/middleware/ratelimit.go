@@ -23,29 +23,29 @@ func RateLimitMiddleware(valkeyService *services.ValkeyService, cfg *config.Conf
 }
 
 func processQueue(valkeyService *services.ValkeyService, cfg *config.Config, queue *services.RequestQueue) {
-	for {
-		req := queue.Get()
+	for req := range queue.C {
 		var earliestReset time.Time
-		for _, apiKey := range cfg.GeminiAPIKeys {
-			allowed, resetTime, err := valkeyService.CheckRateLimit(req.C.Request.Context(), apiKey, cfg.RateLimitPerMinute, 100, 250000, cfg.RateLimitWindow)
-			if err != nil {
-				req.C.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check rate limit"})
-				close(req.Done)
-				continue
-			}
+		for {
+			for _, apiKey := range cfg.GeminiAPIKeys {
+				allowed, resetTime, err := valkeyService.CheckRateLimit(req.C.Request.Context(), apiKey, cfg.RateLimitPerMinute, 100, 250000, cfg.RateLimitWindow)
+				if err != nil {
+					req.C.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check rate limit"})
+					close(req.Done)
+					continue
+				}
 
-			if allowed {
-				req.C.Set("geminiAPIKey", apiKey)
-				req.C.Next()
-				close(req.Done)
-				goto nextRequest
+				if allowed {
+					req.C.Set("geminiAPIKey", apiKey)
+					req.C.Next()
+					close(req.Done)
+					goto nextRequest
+				}
+				if earliestReset.IsZero() || resetTime.Before(earliestReset) {
+					earliestReset = resetTime
+				}
 			}
-			if earliestReset.IsZero() || resetTime.Before(earliestReset) {
-				earliestReset = resetTime
-			}
+			time.Sleep(time.Until(earliestReset))
 		}
-		time.Sleep(time.Until(earliestReset))
-		queue.Add(req)
 	nextRequest:
 	}
 }

@@ -48,7 +48,7 @@ func (s *ValkeyService) CheckRateLimit(ctx context.Context, apiKey string, limit
 		return false, time.Time{}, err
 	}
 	if count >= int64(limitPerMinute) {
-		oldest, err := s.Client.Do(ctx, s.Client.B().Zrange().Key(minuteKey).Min(0).Max(0).Build()).AsStrSlice()
+		oldest, err := s.Client.Do(ctx, s.Client.B().Zrange().Key(minuteKey).Min("0").Max("0").Build()).AsStrSlice()
 		if err != nil || len(oldest) == 0 {
 			return false, time.Time{}, err
 		}
@@ -64,7 +64,7 @@ func (s *ValkeyService) CheckRateLimit(ctx context.Context, apiKey string, limit
 		return false, time.Time{}, err
 	}
 	if count >= int64(limitPerDay) {
-		oldest, err := s.Client.Do(ctx, s.Client.B().Zrange().Key(dailyKey).Min(0).Max(0).Build()).AsStrSlice()
+		oldest, err := s.Client.Do(ctx, s.Client.B().Zrange().Key(dailyKey).Min("0").Max("0").Build()).AsStrSlice()
 		if err != nil || len(oldest) == 0 {
 			return false, time.Time{}, err
 		}
