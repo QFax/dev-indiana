@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"gemini-proxy/internal/config"
 	"gemini-proxy/internal/services"
 	"net/http"
@@ -14,32 +15,40 @@ func RateLimitMiddleware(valkeyService *services.ValkeyService, cfg *config.Conf
 
 	return func(c *gin.Context) {
 		req := &services.Request{
-			C:    c,
-			Done: make(chan struct{}),
+			APIKeyChan: make(chan services.APIKeyResult, 1),
 		}
 		queue.Add(req)
-		<-req.Done
+
+		result := <-req.APIKeyChan
+		if result.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+			c.Abort()
+			return
+		}
+
+		c.Set("geminiAPIKey", result.APIKey)
+		c.Next()
 	}
 }
 
 func processQueue(valkeyService *services.ValkeyService, cfg *config.Config, queue *services.RequestQueue) {
-	for req := range queue.C {
+	for {
+		req := queue.Get()
 		var earliestReset time.Time
+
 		for {
 			for _, apiKey := range cfg.GeminiAPIKeys {
-				allowed, resetTime, err := valkeyService.CheckRateLimit(req.C.Request.Context(), apiKey, cfg.RateLimitPerMinute, 100, 250000, cfg.RateLimitWindow)
+				allowed, resetTime, err := valkeyService.CheckRateLimit(context.Background(), apiKey, cfg.RateLimitPerMinute, 100, 250000, cfg.RateLimitWindow)
 				if err != nil {
-					req.C.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check rate limit"})
-					close(req.Done)
+					req.APIKeyChan <- services.APIKeyResult{Error: err}
 					continue
 				}
 
 				if allowed {
-					req.C.Set("geminiAPIKey", apiKey)
-					req.C.Next()
-					close(req.Done)
+					req.APIKeyChan <- services.APIKeyResult{APIKey: apiKey}
 					goto nextRequest
 				}
+
 				if earliestReset.IsZero() || resetTime.Before(earliestReset) {
 					earliestReset = resetTime
 				}

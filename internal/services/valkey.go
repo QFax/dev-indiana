@@ -52,7 +52,7 @@ func (s *ValkeyService) CheckRateLimit(ctx context.Context, apiKey string, limit
 		if err != nil || len(oldest) == 0 {
 			return false, time.Time{}, err
 		}
-		oldestTimestamp, _ := time.Parse(time.RFC3339, oldest)
+		oldestTimestamp, _ := time.Parse(time.RFC3339, oldest[0])
 		return false, oldestTimestamp.Add(60 * time.Second), nil
 	}
 
@@ -68,7 +68,7 @@ func (s *ValkeyService) CheckRateLimit(ctx context.Context, apiKey string, limit
 		if err != nil || len(oldest) == 0 {
 			return false, time.Time{}, err
 		}
-		oldestTimestamp, _ := time.Parse(time.RFC3339, oldest)
+		oldestTimestamp, _ := time.Parse(time.RFC3339, oldest[0])
 		return false, oldestTimestamp.Add(86400 * time.Second), nil
 	}
 
