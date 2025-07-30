@@ -36,7 +36,7 @@ func (s *ValkeyService) GetNextAPIKey(ctx context.Context, keys []string) (strin
 	return keys[index%int64(len(keys))], nil
 }
 
-func (s *ValkeyService) CheckRateLimit(ctx context.Context, apiKey string, limitPerMinute, limitPerDay, tokensPerMinute int, window string) (bool, time.Time, error) {
+func (s *ValkeyService) CheckRateLimit(ctx context.Context, apiKey string, limitPerMinute, limitPerDay int) (bool, time.Time, error) {
 	now := time.Now()
 	nowUnix := now.Unix()
 
@@ -72,12 +72,20 @@ func (s *ValkeyService) CheckRateLimit(ctx context.Context, apiKey string, limit
 		return false, oldestTimestamp.Add(86400 * time.Second), nil
 	}
 
+	return true, time.Time{}, nil
+}
+
+func (s *ValkeyService) IncrementRateLimit(ctx context.Context, apiKey string) error {
+	now := time.Now()
+	nowUnix := now.Unix()
+	minuteKey := fmt.Sprintf("proxy:%s:requests:minute", apiKey)
+	dailyKey := fmt.Sprintf("proxy:%s:requests:day", apiKey)
 
 	// Add current request to sets
 	s.Client.Do(ctx, s.Client.B().Zadd().Key(minuteKey).ScoreMember().ScoreMember(float64(nowUnix), now.Format(time.RFC3339)).Build())
 	s.Client.Do(ctx, s.Client.B().Zadd().Key(dailyKey).ScoreMember().ScoreMember(float64(nowUnix), now.Format(time.RFC3339)).Build())
 
-	return true, time.Time{}, nil
+	return nil
 }
 
 func (s *ValkeyService) UpdateStats(ctx context.Context, apiKey string, promptTokens, completionTokens int) error {

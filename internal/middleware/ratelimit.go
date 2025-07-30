@@ -42,13 +42,14 @@ func processQueue(valkeyService *services.ValkeyService, cfg *config.Config, que
 
 		for {
 			for _, apiKey := range cfg.GeminiAPIKeys {
-				allowed, resetTime, err := valkeyService.CheckRateLimit(context.Background(), apiKey, cfg.RateLimitPerMinute, 100, 250000, cfg.RateLimitWindow)
+				allowed, resetTime, err := valkeyService.CheckRateLimit(context.Background(), apiKey, cfg.RateLimitPerMinute, 100)
 				if err != nil {
 					req.APIKeyChan <- services.APIKeyResult{Error: err}
 					continue
 				}
 
 				if allowed {
+					valkeyService.IncrementRateLimit(context.Background(), apiKey)
 					req.APIKeyChan <- services.APIKeyResult{APIKey: apiKey}
 					goto nextRequest
 				}
