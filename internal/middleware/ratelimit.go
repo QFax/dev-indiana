@@ -11,14 +11,17 @@ import (
 )
 
 func RateLimitMiddleware(valkeyService *services.ValkeyService, cfg *config.Config, queue *services.RequestQueue) gin.HandlerFunc {
+	// Start a background goroutine to process the request queue
 	go processQueue(valkeyService, cfg, queue)
 
 	return func(c *gin.Context) {
+		// Create a new request and add it to the queue
 		req := &services.Request{
 			APIKeyChan: make(chan services.APIKeyResult, 1),
 		}
 		queue.Add(req)
 
+		// Wait for the API key to be available
 		result := <-req.APIKeyChan
 		if result.Error != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
@@ -26,6 +29,7 @@ func RateLimitMiddleware(valkeyService *services.ValkeyService, cfg *config.Conf
 			return
 		}
 
+		// Set the API key in the context and proceed to the next middleware
 		c.Set("geminiAPIKey", result.APIKey)
 		c.Next()
 	}
