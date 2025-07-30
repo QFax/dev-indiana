@@ -68,9 +68,9 @@ send_burst() {
     echo "Request #$i: Status $RESPONSE_CODE"
     
     if [ "$RESPONSE_CODE" -eq 200 ]; then
-      ((success_count++))
+      success_count=$((success_count + 1))
     elif [ "$RESPONSE_CODE" -eq 429 ]; then
-      ((rate_limited_count++))
+      rate_limited_count=$((rate_limited_count + 1))
     fi
   done
   
