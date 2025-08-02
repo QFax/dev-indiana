@@ -11,7 +11,10 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		apiKey := c.GetHeader("x-goog-api-key")
 		if apiKey == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "x-goog-api-key header is required"})
+			apiKey = c.Query("key")
+		}
+		if apiKey == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "API key is required. Provide it in the x-goog-api-key header or as a 'key' query parameter."})
 			c.Abort()
 			return
 		}
